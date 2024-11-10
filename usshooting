@@ -1,0 +1,59 @@
+population_df.to_excel('NST-EST2023-POP3.xlsx', index=False)
+mass_shootings_df.to_csv('mass_shootings.csv', index=False)
+
+# app.py
+import streamlit as st
+import altair as alt
+import pandas as pd
+from vega_datasets import data
+
+# Load the data files (you may need to specify the path if they're not in the same directory)
+population_df = pd.read_csv('population.csv')
+mass_shootings_df = pd.read_csv('mass_shootings.csv')
+
+# Data Preparation
+population_df['State'] = population_df['State'].str.replace('.', '', regex=False)
+shootings_per_state = mass_shootings_df.groupby('State').sum(numeric_only=True).reset_index()
+merged_df = pd.merge(population_df, shootings_per_state, on='State', how='left')
+
+# Add derived columns
+merged_df['Shootings per Citizen'] = merged_df['Total Victims'] / merged_df['2023']
+merged_df['Shootings per Million'] = (merged_df['Total Victims'] / merged_df['2023']) * 1_000_000
+
+state_fips = {
+    'Alabama': '1', 'Alaska': '2', 'Arizona': '4', 'Arkansas': '5', 'California': '6', 'Colorado': '8', 'Connecticut': '9',
+    'Delaware': '10', 'Florida': '12', 'Georgia': '13', 'Hawaii': '15', 'Idaho': '16', 'Illinois': '17', 'Indiana': '18',
+    'Iowa': '19', 'Kansas': '20', 'Kentucky': '21', 'Louisiana': '22', 'Maine': '23', 'Maryland': '24', 'Massachusetts': '25',
+    'Michigan': '26', 'Minnesota': '27', 'Mississippi': '28', 'Missouri': '29', 'Montana': '30', 'Nebraska': '31', 'Nevada': '32',
+    'New Hampshire': '33', 'New Jersey': '34', 'New Mexico': '35', 'New York': '36', 'North Carolina': '37', 'North Dakota': '38',
+    'Ohio': '39', 'Oklahoma': '40', 'Oregon': '41', 'Pennsylvania': '42', 'Rhode Island': '44', 'South Carolina': '45',
+    'South Dakota': '46', 'Tennessee': '47', 'Texas': '48', 'Utah': '49', 'Vermont': '50', 'Virginia': '51', 'Washington': '53',
+    'West Virginia': '54', 'Wisconsin': '55', 'Wyoming': '56'
+}
+merged_df['id'] = merged_df['State'].map(state_fips)
+
+# Visualization Setup
+states = alt.topo_feature(data.us_10m.url, feature='states')
+variable_list = ['Shootings per Citizen', 'Shootings per Million', '2023', 'Total Victims', 'Victims Killed',
+                 'Victims Injured', 'Suspects Killed', 'Suspects Injured', 'Suspects Arrested']
+
+# Streamlit Layout
+st.title("US Mass Shootings Data Visualization")
+st.write("Interactive visualization of mass shooting data in the US.")
+
+# Create an Altair chart
+chart = alt.Chart(states).mark_geoshape(tooltip=True).encode(
+    alt.Color(alt.repeat('row'), type='quantitative')
+).transform_lookup(
+    lookup='id',
+    from_=alt.LookupData(merged_df, 'id', variable_list)
+).project(
+    type='albersUsa'
+).repeat(
+    row=variable_list
+).resolve_scale(
+    color='independent'
+)
+
+# Display the chart in Streamlit
+st.altair_chart(chart, use_container_width=True)
